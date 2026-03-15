@@ -39,17 +39,48 @@ jobs:
       - name: Upload APK to Telegram
         if: success()
         env:
-          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          BUILD_NUM: ${{ github.run_number }}
         run: |
           APK_PATH=$(find app/build/outputs/apk/debug -name "*.apk" | head -n 1)
-          if [ -n "$APK_PATH" ]; then
-            echo "Found APK: $APK_PATH"
-            curl -v -F "chat_id=$TELEGRAM_CHAT_ID" \
-                 -F "document=@$APK_PATH" \
-                 -F "caption=🚀 FlowStable UPI v1.0 - Build #${{ github.run_number }}" \
-                 "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/sendDocument"
-          else
-            echo "No APK found!"
+
+          if [ -z "$APK_PATH" ]; then
+            echo "ERROR: No APK found in build output"
             exit 1
           fi
+
+          echo "Found APK: $APK_PATH"
+
+          # Validate secrets are not empty
+          if [ -z "$BOT_TOKEN" ]; then
+            echo "ERROR: TELEGRAM_BOT_TOKEN secret is not set"
+            exit 1
+          fi
+
+          if [ -z "$CHAT_ID" ]; then
+            echo "ERROR: TELEGRAM_CHAT_ID secret is not set"
+            exit 1
+          fi
+
+          # Build URL explicitly to avoid any interpolation issues
+          TG_URL="https://api.telegram.org/bot${BOT_TOKEN}/sendDocument"
+
+          echo "Sending APK to Telegram..."
+
+          HTTP_STATUS=$(curl -s -o /tmp/tg_response.json -w "%{http_code}" \
+            -F "chat_id=${CHAT_ID}" \
+            -F "document=@${APK_PATH}" \
+            -F "caption=FlowStable UPI - Build #${BUILD_NUM}" \
+            "${TG_URL}")
+
+          echo "HTTP Status: $HTTP_STATUS"
+          echo "Response:"
+          cat /tmp/tg_response.json
+
+          if [ "$HTTP_STATUS" != "200" ]; then
+            echo "ERROR: Telegram API returned HTTP $HTTP_STATUS"
+            exit 1
+          fi
+
+          echo "APK delivered to Telegram successfully"
