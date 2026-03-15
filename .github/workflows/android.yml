@@ -52,26 +52,30 @@ jobs:
 
           echo "Found APK: $APK_PATH"
 
-          # Validate secrets are not empty
+          # Strip any accidental whitespace/newlines from secrets
+          BOT_TOKEN=$(echo "$BOT_TOKEN" | tr -d '[:space:]')
+          CHAT_ID=$(echo "$CHAT_ID" | tr -d '[:space:]')
+
           if [ -z "$BOT_TOKEN" ]; then
-            echo "ERROR: TELEGRAM_BOT_TOKEN secret is not set"
+            echo "ERROR: TELEGRAM_BOT_TOKEN secret is not set or empty"
             exit 1
           fi
 
           if [ -z "$CHAT_ID" ]; then
-            echo "ERROR: TELEGRAM_CHAT_ID secret is not set"
+            echo "ERROR: TELEGRAM_CHAT_ID secret is not set or empty"
             exit 1
           fi
 
-          # Build URL explicitly to avoid any interpolation issues
-          TG_URL="https://api.telegram.org/bot${BOT_TOKEN}/sendDocument"
+          echo "Token length: ${#BOT_TOKEN}"
+          echo "Chat ID: $CHAT_ID"
 
-          echo "Sending APK to Telegram..."
+          TG_URL="https://api.telegram.org/bot${BOT_TOKEN}/sendDocument"
+          echo "Sending to Telegram..."
 
           HTTP_STATUS=$(curl -s -o /tmp/tg_response.json -w "%{http_code}" \
-            -F "chat_id=${CHAT_ID}" \
-            -F "document=@${APK_PATH}" \
-            -F "caption=FlowStable UPI - Build #${BUILD_NUM}" \
+            --form "chat_id=${CHAT_ID}" \
+            --form "document=@${APK_PATH};type=application/vnd.android.package-archive" \
+            --form "caption=FlowStable UPI - Build #${BUILD_NUM}" \
             "${TG_URL}")
 
           echo "HTTP Status: $HTTP_STATUS"
