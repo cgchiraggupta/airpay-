@@ -19,13 +19,21 @@ object USSDController {
         BALANCE
     }
 
+    @Volatile
     var currentState: State = State.IDLE
         private set
 
+    @Volatile
     var currentFlow: Flow = Flow.PAYMENT
+
+    @Volatile
     var currentPayment: UPIData? = null
+
+    @Volatile
     var lastBalance: String = ""
-    var activeService: com.flowstable.upi.ussd.USSDService? = null
+
+    @Volatile
+    var activeService: USSDService? = null
 
     fun updateState(newState: State) {
         currentState = newState
@@ -95,7 +103,6 @@ object USSDController {
                 null
             }
             text.contains("balance is") || text.contains("rs.") -> {
-                // Extract balance
                 val regex = "rs\\.?\\s?([\\d.]+)".toRegex()
                 val match = regex.find(text)
                 lastBalance = match?.groupValues?.get(1) ?: text

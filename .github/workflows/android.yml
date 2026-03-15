@@ -2,47 +2,89 @@ name: Build Android APK
 
 on:
   push:
-    branches: [ "main" ]
+    branches: ["main"]
   pull_request:
-    branches: [ "main" ]
+    branches: ["main"]
 
 jobs:
   build:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-    
+
     steps:
-    - uses: actions/checkout@v4
-    
-    - name: Set up JDK 17
-      uses: actions/setup-java@v4
-      with:
-        java-version: '17'
-        distribution: 'temurin'
+      - uses: actions/checkout@v4
 
-    - name: Setup Gradle
-      uses: gradle/actions/setup-gradle@v3
-      with:
-        gradle-version: '8.2'
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: "17"
+          distribution: "temurin"
 
-    - name: Build with Gradle
-      run: gradle assembleDebug
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v3
+        with:
+          gradle-version: "8.2"
 
-    - name: Upload APK to Telegram
-      if: success()
-      env:
-        TELEGRAM_BOT_TOKEN: "8362097007:AAGFo7l3fdwipCgmUQ-f2n7EHOvt_swk0KM"
-        TELEGRAM_CHAT_ID: "-1003600205905"
-      run: |
-        APK_PATH=$(find app/build/outputs/apk/debug -name "*.apk" | head -n 1)
-        if [ -n "$APK_PATH" ]; then
+      - name: Build with Gradle
+        run: gradle assembleDebug
+
+      - name: Upload APK as GitHub Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-debug-build-${{ github.run_number }}
+          path: app/build/outputs/apk/debug/*.apk
+          retention-days: 14
+
+      - name: Upload APK to Telegram
+        if: success()
+        env:
+          BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          BUILD_NUM: ${{ github.run_number }}
+        run: |
+          APK_PATH=$(find app/build/outputs/apk/debug -name "*.apk" | head -n 1)
+
+          if [ -z "$APK_PATH" ]; then
+            echo "ERROR: No APK found in build output"
+            exit 1
+          fi
+
           echo "Found APK: $APK_PATH"
-          curl -v -F "chat_id=$TELEGRAM_CHAT_ID" \
-               -F "document=@$APK_PATH" \
-               -F "caption=🚀 FlowStable UPI v1.0 - Build #${{ github.run_number }}" \
-               "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/sendDocument"
-        else
-          echo "No APK found!"
-          exit 1
-        fi
+
+          # Strip any accidental whitespace/newlines from secrets
+          BOT_TOKEN=$(echo "$BOT_TOKEN" | tr -d '[:space:]')
+          CHAT_ID=$(echo "$CHAT_ID" | tr -d '[:space:]')
+
+          if [ -z "$BOT_TOKEN" ]; then
+            echo "ERROR: TELEGRAM_BOT_TOKEN secret is not set or empty"
+            exit 1
+          fi
+
+          if [ -z "$CHAT_ID" ]; then
+            echo "ERROR: TELEGRAM_CHAT_ID secret is not set or empty"
+            exit 1
+          fi
+
+          echo "Token length: ${#BOT_TOKEN}"
+          echo "Chat ID: $CHAT_ID"
+
+          TG_URL="https://api.telegram.org/bot${BOT_TOKEN}/sendDocument"
+          echo "Sending to Telegram..."
+
+          HTTP_STATUS=$(curl -s -o /tmp/tg_response.json -w "%{http_code}" \
+            --form "chat_id=${CHAT_ID}" \
+            --form "document=@${APK_PATH};type=application/vnd.android.package-archive" \
+            --form "caption=FlowStable UPI - Build #${BUILD_NUM}" \
+            "${TG_URL}")
+
+          echo "HTTP Status: $HTTP_STATUS"
+          echo "Response:"
+          cat /tmp/tg_response.json
+
+          if [ "$HTTP_STATUS" != "200" ]; then
+            echo "ERROR: Telegram API returned HTTP $HTTP_STATUS"
+            exit 1
+          fi
+
+          echo "APK delivered to Telegram successfully"

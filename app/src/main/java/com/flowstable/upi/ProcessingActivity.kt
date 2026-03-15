@@ -22,7 +22,7 @@ class ProcessingActivity : AppCompatActivity() {
         tvPaymentDetails = findViewById(R.id.tvPaymentDetails)
 
         updatePaymentDetails()
-        
+
         findViewById<android.view.View>(R.id.btnSubmitPin).setOnClickListener {
             val etPin = findViewById<android.widget.EditText>(R.id.etPin)
             val pin = etPin.text.toString()
@@ -30,15 +30,14 @@ class ProcessingActivity : AppCompatActivity() {
                 val service = USSDController.activeService
                 if (service != null) {
                     service.sendResponse(pin)
-                    // Optimistic UI update
-                     android.widget.Toast.makeText(this, "Verifying PIN...", android.widget.Toast.LENGTH_SHORT).show()
-                     findViewById<android.view.View>(R.id.btnSubmitPin).isEnabled = false
+                    android.widget.Toast.makeText(this, "Verifying PIN...", android.widget.Toast.LENGTH_SHORT).show()
+                    findViewById<android.view.View>(R.id.btnSubmitPin).isEnabled = false
                 } else {
-                     android.widget.Toast.makeText(this, "USSD Service not connected. Please try again.", android.widget.Toast.LENGTH_LONG).show()
+                    android.widget.Toast.makeText(this, "USSD Service not connected. Please try again.", android.widget.Toast.LENGTH_LONG).show()
                 }
             }
         }
-        
+
         observeUSSDStatus()
     }
 
@@ -50,45 +49,55 @@ class ProcessingActivity : AppCompatActivity() {
     }
 
     private fun observeUSSDStatus() {
-        // Poll USSD status
         handler.postDelayed(object : Runnable {
             override fun run() {
                 when (USSDController.currentState) {
+
                     USSDController.State.IDLE -> {
                         tvStatus.text = "Initiating USSD Session..."
                     }
+
                     USSDController.State.SELECT_SIM -> {
                         tvStatus.text = "Detecting SIM Selection..."
                     }
+
                     USSDController.State.MENU_MAIN -> {
                         tvStatus.text = "Accessing BHIM *99#..."
                     }
+
                     USSDController.State.ENTER_UPI -> {
                         tvStatus.text = "Entering Recipient UPI ID..."
                     }
+
                     USSDController.State.ENTER_AMOUNT -> {
                         tvStatus.text = "Entering Amount..."
                     }
+
                     USSDController.State.CONFIRM -> {
                         tvStatus.text = "Waiting for UPI PIN..."
                         findViewById<android.view.View>(R.id.layoutPinEntry).visibility = android.view.View.VISIBLE
                         findViewById<android.view.View>(R.id.cardInfo).visibility = android.view.View.GONE
                     }
+
                     USSDController.State.SUCCESS -> {
-                        navigateToResult(true)
+                        navigateToPaymentResult(success = true)
                         return
                     }
+
                     USSDController.State.BALANCE_RESULT -> {
+                        // result_type = "balance" so ResultActivity shows correct screen
                         val intent = Intent(this@ProcessingActivity, ResultActivity::class.java).apply {
                             putExtra("is_success", true)
-                            putExtra("message", "Your Bank Balance is: \nRs. ${USSDController.lastBalance}")
+                            putExtra("result_type", "balance")
+                            putExtra("message", "Your Bank Balance is:\nRs. ${USSDController.lastBalance}")
                         }
                         startActivity(intent)
                         finish()
                         return
                     }
+
                     USSDController.State.FAILED -> {
-                        navigateToResult(false)
+                        navigateToPaymentResult(success = false)
                         return
                     }
                 }
@@ -97,9 +106,12 @@ class ProcessingActivity : AppCompatActivity() {
         }, 500)
     }
 
-    private fun navigateToResult(success: Boolean) {
-        val intent = android.content.Intent(this, ResultActivity::class.java)
-        intent.putExtra("is_success", success) // Changed to "is_success" to match the new logic
+    private fun navigateToPaymentResult(success: Boolean) {
+        // result_type = "payment" so ResultActivity shows amount + recipient correctly
+        val intent = Intent(this, ResultActivity::class.java).apply {
+            putExtra("is_success", success)
+            putExtra("result_type", "payment")
+        }
         startActivity(intent)
         finish()
     }
